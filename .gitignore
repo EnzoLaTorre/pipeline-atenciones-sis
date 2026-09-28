@@ -1,0 +1,27 @@
+# --- Datos crudos: se descargan con scripts/download_data.sh ---
+# OJO: solo data/raw. data/processed SI se versiona (contiene el snapshot
+# agregado que usa la demo en linea).
+data/raw/
+
+# --- Credenciales: nunca se versionan ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.mypy_cache/
+*.egg-info/
+
+# --- Secretos de Streamlit ---
+.streamlit/secrets.toml
+
+# --- Editores y sistema ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

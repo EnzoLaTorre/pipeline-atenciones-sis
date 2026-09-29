@@ -285,21 +285,26 @@ python -m pytest tests/ -q                 # 46 pruebas
 
 ### Publicar el dashboard
 
-El dashboard lee solo tres Parquet versionados (`resumen_regional`,
-`dim_poblacion` y `dim_poblacion_region`), así que corre en Streamlit Community
-Cloud sin base de datos y sin los 1,6 GB de la fuente. En
-[share.streamlit.io](https://share.streamlit.io), conectado con la cuenta de
-GitHub:
+El dashboard lee solo Parquet versionados (`resumen_regional`,
+`dim_poblacion` y `dim_poblacion_region`), así que corre en cualquier host de
+Python sin base de datos y sin los 1,6 GB de la fuente.
+
+Está desplegado en Render:
 
 | Ajuste | Valor |
 |---|---|
-| Repository | `EnzoLaTorre/pipeline-atenciones-sis` |
-| Branch | `main` |
-| Main file path | `dashboards/app.py` |
-| Python version | 3.12 |
+| Runtime | Python 3.12, vía la variable de entorno `PYTHON_VERSION` |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `streamlit run dashboards/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless=true` |
 
-El `Main file path` es el paso que se olvida: la app no está en la raíz del
-repositorio, y sin ponerlo Streamlit busca `streamlit_app.py` y falla.
+Demo en vivo: <https://pipeline-atenciones-sis.onrender.com>
+
+Dos detalles del `Start command` que se olvidan y rompen el arranque:
+`--server.address 0.0.0.0`, porque Streamlit escucha en `localhost` por
+defecto y desde afuera no se ve, y `--server.port $PORT`, porque Render
+asigna el puerto por variable de entorno. La `PYTHON_VERSION` hace falta
+porque el repositorio no tiene `.python-version` y sin ella Render arranca
+con un Python demasiado antiguo para `pandas>=2.2` y `pyarrow>=15`.
 
 Las descargas se hacen contra el catálogo CKAN, no con URLs escritas a mano,
 porque el patrón de los nombres cambió en 2024: hasta 2023 terminan en `_0.zip`,

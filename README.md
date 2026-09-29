@@ -283,6 +283,24 @@ streamlit run dashboards/app.py            # dashboard en http://localhost:8501
 python -m pytest tests/ -q                 # 46 pruebas
 ```
 
+### Publicar el dashboard
+
+El dashboard lee solo tres Parquet versionados (`resumen_regional`,
+`dim_poblacion` y `dim_poblacion_region`), así que corre en Streamlit Community
+Cloud sin base de datos y sin los 1,6 GB de la fuente. En
+[share.streamlit.io](https://share.streamlit.io), conectado con la cuenta de
+GitHub:
+
+| Ajuste | Valor |
+|---|---|
+| Repository | `EnzoLaTorre/pipeline-atenciones-sis` |
+| Branch | `main` |
+| Main file path | `dashboards/app.py` |
+| Python version | 3.12 |
+
+El `Main file path` es el paso que se olvida: la app no está en la raíz del
+repositorio, y sin ponerlo Streamlit busca `streamlit_app.py` y falla.
+
 Las descargas se hacen contra el catálogo CKAN, no con URLs escritas a mano,
 porque el patrón de los nombres cambió en 2024: hasta 2023 terminan en `_0.zip`,
 desde 2024 no. Ambas piden `User-Agent` de navegador porque el WAF del portal

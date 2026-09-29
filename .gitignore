@@ -20,6 +20,11 @@ __pycache__/
 # --- Secretos de Streamlit ---
 .streamlit/secrets.toml
 
+# --- Logs de ejecucion: se regeneran en cada corrida. El informe de calidad
+# --- (data/reports/calidad.json) SI se versiona, porque es un artefacto del
+# --- proyecto y no una traza.
+*.log
+
 # --- Editores y sistema ---
 .vscode/
 .idea/

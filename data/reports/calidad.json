@@ -1,0 +1,118 @@
+{
+  "generado": "2026-09-28T23:14:31+00:00",
+  "archivos": [
+    {
+      "archivo": "OPENDATA_DS_01_2017_ATENCIONES_0.zip",
+      "anio": 2017,
+      "semestre": null,
+      "filas_crudas": 7129934,
+      "segundos": 191.4
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2018_ATENCIONES_0.zip",
+      "anio": 2018,
+      "semestre": null,
+      "filas_crudas": 7224609,
+      "segundos": 202.5
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2019_ATENCIONES_0.zip",
+      "anio": 2019,
+      "semestre": null,
+      "filas_crudas": 7365200,
+      "segundos": 237.4
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2020_ATENCIONES_0.zip",
+      "anio": 2020,
+      "semestre": null,
+      "filas_crudas": 5432903,
+      "segundos": 161.7
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2021_01_06_ATENCIONES_0.zip",
+      "anio": 2021,
+      "semestre": "01-06",
+      "filas_crudas": 3338348,
+      "segundos": 103.8
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2021_07_12_ATENCIONES_0.zip",
+      "anio": 2021,
+      "semestre": "07-12",
+      "filas_crudas": 3832485,
+      "segundos": 134.8
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2022_01_06_ATENCIONES_0.zip",
+      "anio": 2022,
+      "semestre": "01-06",
+      "filas_crudas": 4247280,
+      "segundos": 131.3
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2022_07_12_ATENCIONES_0.zip",
+      "anio": 2022,
+      "semestre": "07-12",
+      "filas_crudas": 4418825,
+      "segundos": 106.7
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2023_01_06_ATENCIONES_0.zip",
+      "anio": 2023,
+      "semestre": "01-06",
+      "filas_crudas": 5024801,
+      "segundos": 128.3
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2023_07_12_ATENCIONES_0.zip",
+      "anio": 2023,
+      "semestre": "07-12",
+      "filas_crudas": 5001987,
+      "segundos": 125.3
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2024_01_06_ATENCIONES.zip",
+      "anio": 2024,
+      "semestre": "01-06",
+      "filas_crudas": 5352228,
+      "segundos": 143.0
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2024_07_12_ATENCIONES.zip",
+      "anio": 2024,
+      "semestre": "07-12",
+      "filas_crudas": 5205985,
+      "segundos": 134.7
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2025_01_06_ATENCIONES.zip",
+      "anio": 2025,
+      "semestre": "01-06",
+      "filas_crudas": 5575629,
+      "segundos": 139.2
+    },
+    {
+      "archivo": "OPENDATA_DS_01_2025_07_12_ATENCIONES.zip",
+      "anio": 2025,
+      "semestre": "07-12",
+      "filas_crudas": 5430835,
+      "segundos": 135.9
+    }
+  ],
+  "incidencias": {
+    "filas": 74581049,
+    "ubigeo_invalido": 27216,
+    "sin_ubigeo": 27216,
+    "nivel_no_valido": 16666,
+    "sexo_no_valido": 0,
+    "grupo_no_catalogado": 0,
+    "atenciones_no_numericas": 0,
+    "atenciones_nulas": 0,
+    "atenciones_negativas": 0,
+    "atenciones_totales": 665738377
+  },
+  "filas_hecho": 2604139,
+  "atenciones_totales": 665738377,
+  "segundos_total": 2087.9
+}

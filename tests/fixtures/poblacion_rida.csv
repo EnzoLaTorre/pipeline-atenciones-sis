@@ -1,0 +1,7 @@
+Residencia,UBIGEO_RENIEC,UBIGEO_INEI,Departamento,Provincia,Distrito,Sexo,Edad,TipoDNI,Cantidad
+Nacional,10101,10101,Amazonas,Chachapoyas,Chachapoyas,Hombre,30,DNI convencional,100
+Nacional,10101,10101,Amazonas,Chachapoyas,Chachapoyas,Mujer,40,DNI convencional,50
+Nacional,150101,150101,Lima,Lima,Lima,Hombre,20,DNI electronico,200
+Nacional, , , , , ,Mujer,55,DNI convencional,999
+Nacional, , , , , ,Hombre,60,DNI convencional,888
+Nacional,ABCDEF,ABCDEF,Lima,Lima,Lima,Hombre,25,DNI convencional,42

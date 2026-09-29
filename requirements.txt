@@ -1,8 +1,13 @@
+# Probado con Python 3.12 sobre pandas 3.0.6, pyarrow 25.0.1,
+# SQLAlchemy 2.1.1, streamlit 1.64.0 y altair 6.3.0.
 pandas>=2.2
 pyarrow>=15
 SQLAlchemy>=2.0
 pymssql>=2.3
 python-dotenv>=1.0
 pytest>=8
-streamlit>=1.40
-altair>=5.4
+# El dashboard usa `width=` en lugar de `use_container_width`, que quedo
+# deprecado: Altair 6 rechazo `stack="normal"` y elimino `alt.Scheme`.
+streamlit>=1.49
+altair>=5.5
+openpyxl>=3.1

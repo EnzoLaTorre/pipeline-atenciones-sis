@@ -1,12 +1,18 @@
 #!/usr/bin/env python
-"""Regenera data/processed/resumen_regional.parquet desde los snapshots ya hechos.
+"""Regenera los artefactos chicos de data/processed/ desde los snapshots ya hechos.
 
 El pipeline completo tarda ~35 minutos porque recorre los 1.6 GB de CSV. Este
-script reconstruye solo el archivo chico que alimenta la demo en linea, leyendo
-los Parquet que el pipeline ya dejo, para poder iterar sin reprocesar la fuente.
+script reconstruye solo los archivos que alimentan la demo en linea, leyendo los
+Parquet que el pipeline ya dejo, para poder iterar sin reprocesar la fuente.
+
+Regenera:
+  - resumen_regional.parquet        (conteos por region, anio, nivel, grupo, sexo)
+  - dim_poblacion.parquet           (poblacion identificada por distrito)
+  - dim_poblacion_region.parquet    (poblacion por region, para las tasas)
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,7 +21,7 @@ import pandas as pd
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from src import load  # noqa: E402
+from src import load, poblacion  # noqa: E402
 
 ORIGEN = RAIZ / "data" / "processed"
 DIMENSIONES = ["dim_tiempo", "dim_territorio", "dim_nivel", "dim_grupo_edad", "dim_sexo"]
@@ -79,6 +85,49 @@ def main() -> int:
     destino = load.escribir_resumen_regional(dimensiones, hechos)
     filas = len(pd.read_parquet(destino))
     print(f"{destino.relative_to(RAIZ)}  {filas:,} filas  {destino.stat().st_size / 1024:.0f} KB")
+
+    try:
+        poblacion_distrito, descartes = poblacion.leer_poblacion()
+    except FileNotFoundError as aviso:
+        print(f"Poblacion no disponible, se sigue sin tasas: {aviso}")
+        return 0
+
+    cobertura = poblacion.auditar_cobertura(dimensiones["dim_territorio"], poblacion_distrito)
+    destino_pob = poblacion.guardar(poblacion_distrito)
+    destino_region = poblacion.guardar_por_region(
+        poblacion_distrito, dimensiones["dim_territorio"]
+    )
+
+    print(
+        f"{destino_pob.relative_to(RAIZ)}  {len(poblacion_distrito):,} distritos  "
+        f"{cobertura['poblacion_total_identificada']:,} identificados"
+    )
+    print(f"{destino_region.relative_to(RAIZ)}  {len(pd.read_parquet(destino_region)):,} regiones")
+    print(
+        f"  {cobertura['distritos_cruzan']:,} de {cobertura['distritos_sis']:,} distritos del "
+        f"SIS tienen denominador de poblacion"
+    )
+    print(
+        f"  {descartes['poblacion_sin_codigo_ubigeo']:,} personas sin UBIGEO, excluidas "
+        f"({descartes['filas_sin_codigo_ubigeo']:,} filas)"
+    )
+    if cobertura["distritos_sis_sin_denominador"]:
+        print(
+            f"  {cobertura['distritos_sis_sin_denominador']:,} distritos del SIS quedan sin "
+            f"tasa: no aparecen en RIDA"
+        )
+
+    # El informe de calidad lo escribe el pipeline, que en esta corrida todavia no
+    # conocia la poblacion. Se le anade el bloque en vez de sobrecribirlo, para que
+    # el reporte versionado describa los artefactos que hay en disco.
+    informe_destino = RAIZ / "data" / "reports" / "calidad.json"
+    if informe_destino.exists():
+        informe = json.loads(informe_destino.read_text(encoding="utf-8"))
+        informe["poblacion"] = {**cobertura, **descartes}
+        informe_destino.write_text(
+            json.dumps(informe, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"{informe_destino.relative_to(RAIZ)}  bloque de poblacion actualizado")
     return 0
 
 

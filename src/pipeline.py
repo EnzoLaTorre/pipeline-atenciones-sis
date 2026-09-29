@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from . import config, extract, load, transform
+from . import poblacion as poblacion_mod
 
 
 def _log(mensaje: str) -> None:
@@ -95,6 +96,27 @@ def ejecutar(solo_parquet: bool, limite: int | None) -> int:
         f" ({resumen.stat().st_size / 1024:.0f} KB)"
     )
 
+    try:
+        poblacion, descartes = poblacion_mod.leer_poblacion()
+    except FileNotFoundError as aviso:
+        _log(f"Poblacion no disponible, se continua sin tasas: {aviso}")
+        poblacion, descartes = None, {}
+
+    if poblacion is not None:
+        cobertura = poblacion_mod.auditar_cobertura(dimensiones["dim_territorio"], poblacion)
+        poblacion_mod.guardar(poblacion)
+        destino_region = poblacion_mod.guardar_por_region(poblacion, dimensiones["dim_territorio"])
+        _log(
+            f"Poblacion: {len(poblacion):,} distritos, "
+            f"{int(poblacion['poblacion'].sum()):,} identificados"
+        )
+        _log(
+            f"  {cobertura['distritos_cruzan']:,} de {cobertura['distritos_sis']:,} distritos "
+            f"del SIS tienen denominador de poblacion"
+        )
+        _log(f"  {descartes['poblacion_sin_codigo_ubigeo']:,} personas sin UBIGEO, excluidas")
+        _log(f"  {destino_region.name} para el dashboard")
+
     if solo_parquet:
         _log("Listo (--solo-parquet: no se toco SQL Server).")
     else:
@@ -113,6 +135,8 @@ def ejecutar(solo_parquet: bool, limite: int | None) -> int:
         "atenciones_totales": int(hechos["ATENCIONES"].sum()),
         "segundos_total": round(time.perf_counter() - inicio, 1),
     }
+    if poblacion is not None:
+        informe["poblacion"] = {**cobertura, **descartes}
     destino = config.REPORTS_DIR / "calidad.json"
     destino.write_text(json.dumps(informe, indent=2, ensure_ascii=False), encoding="utf-8")
     _log(f"Informe de calidad: {destino.relative_to(config.PROJECT_ROOT)}")

@@ -71,3 +71,29 @@ BEGIN
     CREATE INDEX ix_fact_territorio ON dbo.fact_atencion (id_territorio);
     CREATE INDEX ix_fact_nivel      ON dbo.fact_atencion (id_nivel);
 END;
+
+-- Denominador de las tasas. Es poblacion identificada con DNI segun RIDA 2025,
+-- no poblacion residente: sirve para comparar entre distritos, no para medir
+-- cobertura de servicios. No lleva columna de anio porque el dataset es de un
+-- solo ano; si se agrega otro, la clave pasa a ser (anio, ubigeo_distrito).
+--
+-- No lleva clave foranea contra dim_territorio a proposito: RIDA tiene cuatro
+-- distritos mas que el SIS (1,892 contra 1,889), y una FK obligaria a descartar
+-- esa poblacion o a inventar un territorio que no existe. La cobertura
+-- incompleta se reporta en data/reports/calidad.json en vez de ocultarse.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'dim_poblacion')
+BEGIN
+    CREATE TABLE dbo.dim_poblacion (
+        ubigeo_distrito NVARCHAR(6) NOT NULL PRIMARY KEY,
+        poblacion       BIGINT NOT NULL
+    );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'dim_poblacion_region')
+BEGIN
+    CREATE TABLE dbo.dim_poblacion_region (
+        region    NVARCHAR(100) NOT NULL PRIMARY KEY,
+        poblacion BIGINT NOT NULL,
+        distritos INT NOT NULL
+    );
+END;

@@ -119,6 +119,9 @@ dim_sexo           3 filas      femenino, masculino, no registrado
 
 fact_atencion  2,604,139 filas  id_tiempo, id_territorio, id_nivel,
                                 id_grupo_edad, id_sexo, atenciones
+
+dim_poblacion       1,892 filas  ubigeo, población identificada RIDA 2025
+dim_poblacion_region   26 filas  región, población, distritos
 ```
 
 **Cada dimensión reserva la clave `0` para "no registrado".** El archivo fuente
@@ -126,6 +129,47 @@ tiene 27,216 filas sin `UBIGEO_DISTRITO` legible y 16,666 con nivel `0` o vacío
 Descartarlas rompería la cuadra con la fuente; dejarlas como `NULL` colgaría
 filas huérfanas. Con un miembro desconocido explícito, cada fila del hecho
 apunta a una dimensión válida y el total siempre reconcilia.
+
+**El modelo está cargado y cuadra.** `python scripts/cargar_sql.py` crea la base,
+aplica el DDL y puebla las tablas desde los Parquet; al terminar compara cada
+tabla contra el Parquet de origen y cuenta las filas del hecho que no
+encuentran dimensión. Resultado de la última carga: 2,604,139 filas,
+665,738,377 atenciones, las 8 tablas cuadradas contra sus Parquet y **0 filas
+huérfanas**. Como el hecho guarda el grano agregado y no el detalle, esa cifra
+de 665,738,377 tiene que reconciliar exactamente con el total de la fuente; si
+alguna vez no lo hace, el problema está en la transformación, no en la carga.
+
+**Las tablas de población no llevan clave foránea contra `dim_territorio`, y es
+deliberado.** RIDA tiene 1,892 distritos y el SIS 1,889: una FK obligaría a
+descartar esa población o a inventar un territorio que no existe. La cobertura
+incompleta se reporta en `data/reports/calidad.json` en vez de esconderse detrás
+de una restricción.
+
+**El análisis se puede reproducir entero en SQL, no solo en el dashboard.**
+Partiendo del modelo, la tasa nacional de 2025 sale en SQL directamente:
+
+```sql
+WITH atenciones AS (
+    SELECT r.region, SUM(f.atenciones) AS atenciones
+    FROM   fact_atencion f
+    JOIN   dim_territorio r ON r.id_territorio = f.id_territorio
+    JOIN   dim_tiempo     t ON t.id_tiempo     = f.id_tiempo
+    WHERE  t.anio = 2025
+    GROUP BY r.region
+)
+SELECT 1000.0 * SUM(a.atenciones) / SUM(pr.poblacion) AS tasa_por_1000
+FROM   atenciones a
+JOIN   dim_poblacion_region pr ON pr.region = a.region;
+```
+
+Da 2,703.6 atenciones por cada 1,000 habitantes, el mismo valor que muestra el
+dashboard. Que los dos caminos coincidan no es casualidad: `cargar_sql.py` carga
+SQL desde los Parquet, no al revés.
+
+El `GROUP BY` del CTE no es opcional. Sin él, `SUM(pr.poblacion)` suma el
+denominador una vez por cada fila del hecho y la tasa sale 0,2 en vez de 2,703.6:
+un error de cuatro órdenes de magnitud que no da ningún error, solo una cifra
+que parece plausible si no se sabe el orden de magnitud esperado.
 
 ## 5. Calidad de datos
 
@@ -231,11 +275,12 @@ python -m src.pipeline                     # ETL completo (~35 min)
 python -m src.pipeline --solo-parquet      # sin tocar SQL Server
 python -m src.pipeline --limite 1          # prueba rápida con un archivo
 
+python scripts/cargar_sql.py               # puebla SQL Server desde los Parquet (~11 min)
 python scripts/regenerar_resumen.py        # rehace el Parquet de la demo
 
 streamlit run dashboards/app.py            # dashboard en http://localhost:8501
 
-python -m pytest tests/ -q                 # 26 pruebas
+python -m pytest tests/ -q                 # 46 pruebas
 ```
 
 Las descargas se hacen contra el catálogo CKAN, no con URLs escritas a mano,
@@ -250,6 +295,7 @@ sus URLs desde el índice del catálogo y saltea lo que ya está en `data/raw/`.
 scripts/download_data.sh      descarga desde el catálogo CKAN
 scripts/download_poblacion.sh descarga RIDA 2025 y catálogo UBIGEO
 scripts/regenerar_resumen.py  rehace el Parquet sin reprocesar 1.6 GB
+scripts/cargar_sql.py         crea la base y puebla SQL Server desde los Parquet
 src/config.py                 rutas, catálogo de columnas, mapeo canónico
 src/extract.py                lectura en lotes desde el ZIP
 src/transform.py              limpieza, tipado, UBIGEO, agregado, dimensiones
@@ -258,7 +304,7 @@ src/load.py                   modelo estrella en SQL Server + Parquet
 src/pipeline.py               orquestador
 dashboards/app.py             dashboard Streamlit sobre Parquet
 sql/schema.sql                DDL del modelo estrella
-tests/                        26 pruebas sobre fixtures con datos sucios
+tests/                        46 pruebas sobre fixtures con datos sucios
 data/reports/calidad.json     informe de calidad de cada corrida
 ```
 
@@ -267,42 +313,72 @@ data/reports/calidad.json     informe de calidad de cada corrida
 Este es un proyecto individual de portafolio. Lo que **no** tiene, y conviene
 decir de entrada:
 
-- **La carga a SQL Server no está verificada en ejecución.** El modelo, el DDL y
-  el cargador están escritos, pero la instancia local de SQL Server Express
-  tenía el protocolo TCP/IP deshabilitado y el servicio SQL Server Browser
-  detenido, y el entorno no tenía permisos de administrador para cambiarlo.
-  `pymssql` solo conecta por TCP, así que la carga falla en la conexión, no en
-  el código. Ver [Limitación conocida](#limitación-conocida-sql-server).
 - **No hay incrementalidad.** Cada corrida reprocesa los 14 archivos completos
   en unos 35 minutos. Con 9 años que es aceptable; con 50 años, no.
 - **No hay orquestación ni reintentos.** Se ejecuta a mano y falla ruidosamente.
-- **Sin tests de integración contra SQL Server.** Las 26 pruebas cubren la
-  transformación y el cruce con población, que es donde está la lógica; la capa de
-  persistencia se valida a mano.
+- **La capa SQL no tiene tests de integración automatizados.** Las 46 pruebas
+  cubren la transformación, el cruce con población, el armado del DDL y el
+  diagnóstico de conexión. Que la carga escriba las cifras correctas se
+  comprueba con `scripts/cargar_sql.py`, que compara cada tabla contra los
+  Parquet y busca filas huérfanas, pero se ejecuta a mano.
 - **Las tasas solo existen para 2025.** El denominador disponible es población
   identificada con DNI de un solo año. Comparar por población entre 2017 y 2025
-  exigiría una serie yearly que este proyecto no trae. Es el límite más visible
-  del análisis y está preferido en el dashboard, no escondido.
+  exigiría una serie anual que este proyecto no trae. Es el límite más visible
+  del análisis y está expuesto en el dashboard, no escondido.
 - **Sin vista por prestación.** Se descartó la columna de servicio CIE para
   mantener el pipeline rápido. Es la extensión más natural.
 
-## Limitación conocida: SQL Server
+## Configurar SQL Server
 
-Para que Python alcance la instancia hay que habilitar TCP/IP y arrancar el
-servicio Browser. Es un paso del sistema, no del proyecto, y requiere consola de
-administrador:
+`pymssql` se conecta **solo por TCP**: no usa memoria compartida ni named pipes,
+aunque la instancia esté perfectamente sana. En una instalación normal esto no
+hay que tocarlo, pero en esta máquina hizo falta, y el síntoma era confuso: el
+registro decía que TCP/IP estaba habilitado y aun así no había ningún puerto en
+escucha.
+
+La causa era `TcpPort` vacío junto con `TcpDynamicPorts = 0`: el motor no
+lograba determinar un puerto de escucha y no abría ninguno. La corrección es
+fijar el puerto y reiniciar el servicio, en consola **como administrador**:
 
 ```powershell
-$instancia = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL16.SQLEXPRESS\MSSQLServer\SuperSocketNetLib\Tcp'
-Set-ItemProperty "$instancia\Enabled" -Name Enabled -Value 1
-Set-ItemProperty "$instancia\IpAll"  -Name Enabled -Value 1
-Start-Service SQLBrowser
-Set-Service SQLBrowser -StartupType Automatic
+$ipall = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL16.SQLEXPRESS\MSSQLServer\SuperSocketNetLib\Tcp\IPAll'
+Set-ItemProperty $ipall -Name TcpPort -Value '1433' -Type String
+Set-ItemProperty $ipall -Name TcpDynamicPorts -Value '' -Type String
+Restart-Service 'MSSQL$SQLEXPRESS'
+Get-NetTCPConnection -State Listen -LocalPort 1433
 ```
 
-Después, `python -m src.pipeline` carga el modelo. La conexión usa SQLAlchemy,
-así que migrar a `pyodbc` con Microsoft ODBC Driver 18 es cambiar el `drivername`
-en `src/config.py`.
+Si el último comando no devuelve nada, `python -m src.pipeline` lo dice con un
+diagnóstico que apunta a la causa en vez de devolver el error 20009 de FreeTDS,
+que no distingue "no hay nada escuchando" de "no puedo autenticarme".
+
+Con el puerto abierto, `python scripts/cargar_sql.py` crea la base, aplica el
+DDL y puebla el modelo desde los Parquet, verificando cada tabla al terminar.
+Tarda unos 11 minutos para 2,6 millones de filas.
+
+Vale la pena registrar lo que salió mal en el camino, porque son las cuatro cosas
+que más se rompen al escribir un cargador contra SQL Server:
+
+- **La URL de instancia con barra invertida.** `mssql+pymssql://localhost\SQLEXPRESS`
+  no escapa el `\`, y el parser de SQLAlchemy no entiende lo que recibe. Se
+  resuelve con `creator=`, que pasa el nombre de instancia a `pymssql` intacto.
+- **Partir el DDL por `;`.** Un `CREATE TABLE` termina en `);`, y ese punto y coma
+  cae dentro del paréntesis: un `split` ingenuo por `;` deja la sentencia con un
+  paréntesis sin cerrar y SQL Server responde `Incorrect syntax near )`. Los
+  `IF ... BEGIN ... END` tienen el mismo problema. `src/load.py` sigue la
+  profundidad de paréntesis y el anidamiento `BEGIN/END`.
+- **`TRUNCATE` sobre tablas con clave foránea.** SQL Server lo prohíbe aunque la
+  tabla esté vacía (error 1785), porque valida que la constraint exista. La
+  recarga usa `DELETE` más `DBCC CHECKIDENT`.
+- **`method="multi"` con lotes grandes.** Genera un `INSERT` con todos los
+  valores del lote; con 50.000 filas y 6 columnas son 300.000 expresiones de fila
+  y se supera el máximo de 1000 (error 10738). Va con `executemany`, que además
+  medido en esta máquina tarda la mitad.
+
+Mientras tanto, **el pipeline funciona igual sin SQL Server**: `python -m
+src.pipeline --solo-parquet` escribe los snapshots en Parquet que alimentan el
+dashboard en línea. Ese es el camino que se versiona y el que se puede ver sin
+instalar nada.
 
 ## Licencia
 

@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 
 import pandas as pd
+from sqlalchemy.exc import OperationalError
 
 from . import config, extract, load, transform
 from . import poblacion as poblacion_mod
@@ -120,10 +121,15 @@ def ejecutar(solo_parquet: bool, limite: int | None) -> int:
     if solo_parquet:
         _log("Listo (--solo-parquet: no se toco SQL Server).")
     else:
-        load.crear_base()
-        motor_ = load.motor()
-        load.crear_esquema(motor_)
-        cargadas = load.cargar(motor_, dimensiones, hechos)
+        try:
+            load.crear_base()
+            motor_ = load.motor()
+            load.crear_esquema(motor_)
+            cargadas = load.cargar(motor_, dimensiones, hechos)
+        except OperationalError as exc:
+            _log("SQL Server no disponible; los Parquet ya quedaron escritos.")
+            _log(load.diagnostico_conexion(exc))
+            return 1
         _log(f"SQL Server: {cargadas:,} filas en dbo.fact_atencion")
 
     config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)

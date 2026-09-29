@@ -1,0 +1,15 @@
+# Normaliza a LF en el repositorio. En Windows, sin esto Git guarda CRLF y un
+# script bash checked out con CRLF falla en el shebang. Es exactamente el modo
+# de fallo que se corrigio en scripts/download_data.sh.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf
+*.csv  text eol=lf
+*.json text eol=lf
+
+# Los Parquet no son texto: no deben pasar por el filtro de normalizacion.
+*.parquet binary
+*.zip    binary

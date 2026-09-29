@@ -18,7 +18,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'dim_territorio')
 BEGIN
     CREATE TABLE dbo.dim_territorio (
         id_territorio   INT NOT NULL PRIMARY KEY,
-        ubigeo_distrito INT NOT NULL,
+        ubigeo_distrito NVARCHAR(6) NOT NULL,
         region          NVARCHAR(100) NOT NULL,
         provincia       NVARCHAR(100) NOT NULL,
         distrito        NVARCHAR(100) NOT NULL,

@@ -49,8 +49,17 @@ def test_niveles_fuera_de_catalogo_van_a_desconocido(limpio: tuple[pd.DataFrame,
 def test_ubigeo_ilegible_y_ausente_terminan_en_centinela(limpio: tuple[pd.DataFrame, transform.Incidencias]) -> None:
     df, incidencias = limpio
     assert incidencias["ubigeo_invalido"] == 3
-    assert (df["UBIGEO_DISTRITO"] == transform.UBIGEO_DESCONOCIDO).sum() == 3
-    assert df["UBIGEO_DISTRITO"].dtype == "int64"
+    assert (df["UBIGEO_DISTRITO"] == config.UBIGEO_DESCONOCIDO).sum() == 3
+
+
+def test_ubigeo_conserva_el_cero_inicial(limpio: tuple[pd.DataFrame, transform.Incidencias]) -> None:
+    """010101 es Amazonas/Chachapoyas. Como entero perderia el cero y no cruzaria."""
+    df, _ = limpio
+    codigos = set(df["UBIGEO_DISTRITO"])
+    assert "010101" in codigos
+    assert "10101" not in codigos
+    validos = codigos - {config.UBIGEO_DESCONOCIDO}
+    assert all(len(c) == 6 and c.isdigit() for c in validos)
 
 
 def test_sexo_fuera_de_catalogo_va_a_desconocido(limpio: tuple[pd.DataFrame, transform.Incidencias]) -> None:

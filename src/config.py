@@ -65,6 +65,13 @@ NIVELES_VALIDOS = ("I", "II", "III")
 SEXOS_VALIDOS = ("FEMENINO", "MASCULINO")
 NIVEL_DESCONOCIDO = "DESCONOCIDO"
 
+# El codigo UBIGEO de distrito es una cadena de 6 digitos, no un numero: al
+# castearlo a entero se pierde el cero inicial (Amazonas 010101 -> 10101) y el
+# distrito deja de cruzar contra el catalogo oficial. Se conserva como texto de
+# ancho fijo. 000000 no es un UBIGEO valido (los departamentos empiezan en 01)
+# y por eso sirve como marca de "no se pudo determinar".
+UBIGEO_DESCONOCIDO = "000000"
+
 GRANO_HECHO = ["ANIO", "MES", "UBIGEO_DISTRITO", "NIVEL_EESS", "GRUPO_EDAD", "SEXO"]
 
 # El grano del hecho solo necesita estas columnas. Las otras siete

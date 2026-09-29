@@ -5,8 +5,6 @@ import pandas as pd
 
 from . import config
 
-UBIGEO_DESCONOCIDO = -1
-
 
 class Incidencias(dict):
     """Acumula contadores de calidad durante la limpieza de un lote."""
@@ -45,10 +43,12 @@ def limpiar(frame: pd.DataFrame) -> tuple[pd.DataFrame, Incidencias]:
     for columna in df.select_dtypes(include=["string", "object"]).columns:
         df[columna] = df[columna].str.strip()
 
-    df["UBIGEO_DISTRITO"] = pd.to_numeric(df["UBIGEO_DISTRITO"], errors="coerce")
-    incidencias["ubigeo_invalido"] = int(df["UBIGEO_DISTRITO"].isna().sum())
+    ubigeo = pd.to_numeric(df["UBIGEO_DISTRITO"], errors="coerce")
+    sin_ubigeo = ubigeo.isna()
+    incidencias["ubigeo_invalido"] = int(sin_ubigeo.sum())
     incidencias["sin_ubigeo"] = incidencias["ubigeo_invalido"]
-    df["UBIGEO_DISTRITO"] = df["UBIGEO_DISTRITO"].fillna(UBIGEO_DESCONOCIDO).astype("int64")
+    df["UBIGEO_DISTRITO"] = ubigeo.fillna(0).astype("int64").astype(str).str.zfill(6)
+    df.loc[sin_ubigeo, "UBIGEO_DISTRITO"] = config.UBIGEO_DESCONOCIDO
 
     df["NIVEL_EESS"] = df["NIVEL_EESS"].fillna("").map(config.normalizar)
     nivel_malo = ~df["NIVEL_EESS"].isin(config.NIVELES_VALIDOS)

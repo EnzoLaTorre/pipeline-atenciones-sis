@@ -11,19 +11,32 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Atenciones del SIS", page_icon="peru", layout="wide")
+st.set_page_config(page_title="Atenciones del SIS", page_icon="🇵🇪", layout="wide")
 
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA_DATOS = RAIZ / "data" / "processed" / "resumen_regional.parquet"
+RUTA_POBLACION = RAIZ / "data" / "processed" / "dim_poblacion_region.parquet"
 
 ORDEN_NIVEL = ["Primer nivel", "Segundo nivel", "Tercer nivel", "No registrado"]
 COLORES_NIVEL = ["#2E7D6F", "#E9A13B", "#B3453C", "#9AA5A1"]
-RANGO_RECOMENDADO = (60, 70)
+RANGO_RECOMENDADO = (70, 80)
+FUENTE_REFERENCIA = (
+    "MinSa, RM 464-2011/MINSA: el primer nivel \"podría resolverse localmente entre "
+    "el 70 y el 80% de las necesidades básicas más frecuentes\"."
+)
+ANIO_TASAS = 2025
 
 
 @st.cache_data
 def cargar() -> pd.DataFrame:
     return pd.read_parquet(RUTA_DATOS)
+
+
+@st.cache_data
+def cargar_poblacion() -> pd.DataFrame | None:
+    if not RUTA_POBLACION.exists():
+        return None
+    return pd.read_parquet(RUTA_POBLACION)
 
 
 @st.cache_data
@@ -83,9 +96,9 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Atenciones", f"{total:,}")
 col2.metric("En primer nivel", f"{porcentaje_primer:.1f} %")
 col3.metric(
-    "Referencia OMS",
+    "Referencia MinSa",
     f"{RANGO_RECOMENDADO[0]}-{RANGO_RECOMENDADO[1]} %",
-    delta=f"{porcentaje_primer - RANGO_RECOMENDADO[1]:+.1f} pp vs. techo",
+    delta=f"{porcentaje_primer - RANGO_RECOMENDADO[0]:+.1f} pp vs. piso",
     delta_color="off",
 )
 
@@ -118,10 +131,15 @@ banda = (
     .encode(y="y:Q")
 )
 
-st.altair_chart(banda + linea, use_container_width=True)
-st.caption(
-    f"La banda punteada marca el rango de referencia ({RANGO_RECOMENDADO[0]}-"
-    f"{RANGO_RECOMENDADO[1]} %) usado para comparar la resolucion en el primer nivel."
+st.altair_chart(banda + linea, width="stretch")
+st.caption(f"La banda punteada marca el rango de referencia de {FUENTE_REFERENCIA}")
+st.warning(
+    "La referencia y esta serie no miden exactamente lo mismo. El MinSa estima qué "
+    "proporción de las *necesidades de salud* se resuelve localmente; el SIS cuenta "
+    "*atenciones registradas* por nivel. El segundo depende de a dónde acude la gente, "
+    "y el financiamiento per cápita al primer nivel incentiva a los "
+    "establecimientos a diagnosticar y derivar, no a resolver. Leer el gap como "
+    "\"ineficiencia\" sería una sobreinterpretación."
 )
 
 st.subheader("Por region, en el ultimo ano del periodo")
@@ -139,7 +157,7 @@ barras = (
     alt.Chart(regional)
     .mark_bar()
     .encode(
-        x=alt.X("porcentaje:Q", title="% de atenciones", stack="normal"),
+            x=alt.X("porcentaje:Q", title="% de atenciones", stack="normalize"),
         y=alt.Y("region:N", title="Region", sort="-x"),
         color=alt.Color(
             "nivel:N", title="Nivel", scale=alt.Scale(domain=ORDEN_NIVEL, range=COLORES_NIVEL)
@@ -154,7 +172,7 @@ barras = (
     .properties(height=max(240, 18 * regional["region"].nunique()))
 )
 
-st.altair_chart(barras, use_container_width=True)
+st.altair_chart(barras, width="stretch")
 
 st.subheader("Por grupo de edad y sexo")
 etapa = (
@@ -170,7 +188,11 @@ calor = (
     .encode(
         x=alt.X("grupo_edad:N", title="Grupo de edad", sort=list(grupos)),
         y=alt.Y("sexo:N", title="Sexo"),
-        color=alt.Color("atenciones:Q", title="Atenciones", scale=alt.Scheme("Blues")),
+            color=alt.Color(
+                "atenciones:Q",
+                title="Atenciones",
+                scale=alt.Scale(range=["#EDF4FB", "#08519C"]),
+            ),
         column=alt.Column("nivel:N", title="Nivel"),
         tooltip=[
             alt.Tooltip("grupo_edad:N"),
@@ -182,7 +204,50 @@ calor = (
     .properties(width=190)
 )
 
-st.altair_chart(calor, use_container_width=True)
+st.altair_chart(calor, width="stretch")
+
+poblacion = cargar_poblacion()
+if poblacion is not None:
+    st.divider()
+    st.subheader(f"Atenciones por 1,000 habitantes, {ANIO_TASAS}")
+
+    avisos = [
+        "El denominador es la **poblacion identificada con DNI** que reporta el "
+        f"RENIEC para {ANIO_TASAS}, no la poblacion residente. Un distrito con "
+        "muchos residentes no censados aparece subrepresentado, asi que la tasa "
+        "tiende a verse inflada.",
+        f"Es un corte de **un solo anio**. Por eso la tasa solo se calcula para "
+        f"{ANIO_TASAS}: aplicarla a 2017 con poblacion de {ANIO_TASAS} seria "
+        "invalido. La serie de conteos de arriba si es comparable entre anios.",
+        "Con conteos, un distrito con mas habitantes registra mas atenciones "
+        "aunque su cobertura sea peor. La tasa corrige eso; el conteo no.",
+    ]
+    for aviso in avisos:
+        st.caption(f"- {aviso}")
+
+    base = vista[vista["anio"] == ANIO_TASAS]
+    if not base.empty:
+        tasas = base.groupby("region", as_index=False)["atenciones"].sum()
+        tasas = tasas.merge(poblacion, on="region", how="left")
+        tasas = tasas[tasas["poblacion"] > 0]
+        tasas["por_1000"] = tasas["atenciones"] / tasas["poblacion"] * 1000
+
+        escala = (
+            alt.Chart(tasas)
+            .mark_bar(color="#2E7D6F")
+            .encode(
+                x=alt.X("por_1000:Q", title="Atenciones por 1,000 habitantes identificados"),
+                y=alt.Y("region:N", title="Region", sort="-x"),
+                tooltip=[
+                    alt.Tooltip("region:N", title="Region"),
+                    alt.Tooltip("atenciones:Q", title="Atenciones", format=","),
+                    alt.Tooltip("poblacion:Q", title="Poblacion con DNI", format=","),
+                    alt.Tooltip("por_1000:Q", title="Por 1,000", format=".1f"),
+                ],
+            )
+            .properties(height=max(240, 18 * len(tasas)))
+        )
+        st.altair_chart(escala, width="stretch")
 
 st.divider()
 st.caption(

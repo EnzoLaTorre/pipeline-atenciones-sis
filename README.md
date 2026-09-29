@@ -2,7 +2,13 @@
 
 Pipeline ETL que convierte los archivos publicados por el Estado Peruano en un
 modelo estrella en SQL Server, para analizar **en qué nivel de atención se
-resuelven las consultas al SIS** y cómo cambió ese reparto entre 2017 y 2025.
+registran las atenciones del SIS** y cómo cambió ese reparto entre 2017 y 2025.
+
+> **Qué se está contando.** El campo de la fuente es `ATENCIONES`, no
+> `consultas`. Incluye contactos preventivos y promocionales, no solo
+> atendimento clínico. Por eso la tasa nacional de 2025 sale en ~2,7 atenciones
+> por persona al año, una cifra que no tiene sentido como número de consultas
+> médicas. Todo el análisis usa "atenciones" con ese sentido.
 
 - **Fuente:** [Datos Abiertos del Estado - Atenciones realizadas a los asegurados (SIS)](https://www.datosabiertos.gob.pe/dataset/datos-de-atenciones-realizadas-los-asegurados-sis) (ODC-By)
 - **Volumen procesado:** 14 archivos, 1.6 GB comprimido, 74,581,049 filas crudas
@@ -19,11 +25,17 @@ detalle de un establecimiento, y no hay forma de responder preguntas como
 *"¿el SIS se resuelve en el primer nivel o en los hospitales?"* sin volver a
 recorrer los 1.6 GB cada vez.
 
-Eso importa porque el principio de salud pública Peruano y la evidencia
-internacional apuntan a que entre 60 % y 70 % de las consultas deberían
-puderse resolver en el primer nivel de atención, sin necesidad de un hospital.
-Si el sistema se aleja de ese rango, es un problema de política de salud con
-consecuencias en presupuesto y en tiempo de espera de los pacientes.
+Eso importa porque el Ministerio de Salud del Perú, en la
+[RM 464-2011/MINSA](https://inen.sld.pe/portal/documentos/pdf/normas_legales/resoluciones_ministeriales/2011/02112011_RM464_2011_MINSA.pdf)
+estima que el primer nivel *"podría resolverse localmente entre el 70 y el 80 % de
+las necesidades básicas más frecuentes"*. Si el sistema se aleja de ese rango, es
+un problema de política de salud con consecuencias en presupuesto y en tiempo de
+espera de los pacientes.
+
+> La cita importa porque el rango es fácil de deformar. La fuente peruana dice
+> **70-80 %** y habla de *necesidades resueltas localmente*, no de *porcentaje de
+> atenciones registradas en primer nivel*. No son la misma magnitud, y el
+> dashboard lo advierte al pie del gráfico.
 
 ## 2. El hallazgo
 
@@ -52,8 +64,8 @@ Dos advertencias que el gráfico hace explícitas:
 ### La hipótesis original era falsa
 
 Mi primera hipótesis fue que el SIS usaba hospitales de más. Los datos la
-refutaron en la primera consulta: 86.6 % de las atenciones de 2021 se
-resolvían en el primer nivel, por encima del rango de referencia. La pregunta
+refutaron en la primera consulta: 85.1 % de las atenciones de 2021 se
+resolvían en el primer nivel, dentro del rango de referencia. La pregunta
 que quedó, y que sí resultó informativa, es la evolución de esa proporción.
 Queda registrado aquí porque es parte del resultado: la hipótesis original
 era incorrecta y el dato la descartó.
@@ -131,7 +143,14 @@ Recuento sobre las 74,581,049 filas procesadas, publicado en
 
 Problemas reales encontrados y cómo se manejan:
 
-- **`UBIGEO_DISTRITO` con tipos mezclados.** Debería ser un código numérico de
+- **`UBIGEO_DISTRITO` con ceros iniciales.** El más importante, y el que más
+  tiempo costó ver. El código es un identificador de seis dígitos, pero al
+  convertirlo a entero `010101` se volvía `10101`, y el catálogo oficial nunca
+  casaba: solo 970 de 1,888 distritos cruzaban. El síntoma era silencioso, porque
+  la mitad de los distritos afectados sí cuadraban y nada daba error. La
+  corrección es no castear nunca: se lee como texto y se rellena con `zfill(6)`.
+  `sql/schema.sql` guarda el campo como `NVARCHAR(6)` por la misma razón, y hay
+  una prueba de regresión que falla si reaparece un código de cinco dígitos.- **`UBIGEO_DISTRITO` con tipos mezclados.** Debería ser un código numérico de
   seis dígitos, pero el archivo trae valores no numéricos, y de hecho
   concatenado cuando viene vacío. Se lee como texto, se convierte con
   `errors="coerce"` y lo que no convierte va al miembro desconocido.
@@ -145,7 +164,56 @@ Problemas reales encontrados y cómo se manejan:
   Estado publica un cambio, el pipeline lanza un error explícito en vez de
   fallar en silencio más adelante.
 
-## 6. Cómo ejecutarlo
+## 6. Población: por qué contar atenciones no alcanza
+
+Un 82 % de atenciones en primer nivel en un distrito con mucha más población que
+otro no dice nada sobre cobertura. Contar sin denominador compara el tamaño de la
+población y da la respuesta equivocada.
+
+El denominador viene del [RIDA 2025 del RENIEC](https://www.datosabiertos.gob.pe/),
+con **35,843,232 personas identificadas** distribuidas en 1,892 distritos. El cruce
+sale limpio: **1,888 de 1,888** distritos con atenciones del SIS encuentran
+denominador. Antes del arreglo de UBIGEO ese número era 970 de 1,888, así que la
+cobertura que se ve en el dashboard es consecuencia directa de haber leído el
+código como texto.
+
+Quedan 12,048 personas (0,03 %) fuera del agregado regional, y vale la pena
+nombrarlas porque son de dos tipos distintos:
+
+- 3 distritos reales (`050413` Putis, `080915` Kumpirushiato, `151026` San
+  Joaquín) que RIDA reporta y el SIS no tiene atenciones.
+- 1 código que **no existe en el catálogo oficial** (`160405`, 3,504 personas). Es
+  un defecto de la fuente, no del cruce, y se descarta en vez de inventarle un
+  distrito.
+
+Tres cosas que hay que decir sobre este denominador, porque es fácil usarlo mal:
+
+- **No es población residente.** Es población con DNI registrada. Un distrito con
+  muchos residentes no censados aparece subrepresentado, y su tasa se ve inflada.
+- **Es un corte de un solo año.** Solo se calcula la tasa de 2025. Aplicar la
+  población de 2025 a 2017 sería inválido, así que el dashboard calcula conteos
+  para toda la serie y tasas únicamente para 2025. Una serie histórica de tasas
+  exigiría las proyecciones distritales yearly del INEI, que no están en este repo.
+- **La tasa tampoco lo arregla todo.** Con denominador, un distrito grande ya no
+  amasa atenciones solo por tener más habitantes, que es lo que se quería evitar.
+
+### Dos trampas del dataset de RIDA
+
+Ninguna de las dos produce un error visible: las dos dan un resultado plausible y
+ equivocado, que es la razón por la que quedaron documentadas.
+
+- **El archivo trae dos columnas de UBIGEO y no son la misma.** `UBIGEO_RENIEC` y
+  `UBIGEO_INEI` difieren en el 84 % de las filas. El pipeline une por
+  `UBIGEO_INEI`, porque es la que corresponde al catálogo territorial con el que
+  se comparan los distritos del SIS. Cruzar por la de RENIEC habría unido
+  distritos diferentes sin quejarse.
+- **El UBIGEO ausente es un espacio en blanco, no un vacío.** Aplicar el mismo
+  `zfill(6)` que arregla los ceros iniciales convertía el espacio en `000000`, un
+  código con forma de distrito real. Concentró 1.3 millones de personas en un
+  código fantasma, que solo se detectó porque `000000` apareció en el top 10 de
+  habitantes. Los blancos se separan antes de rellenar y se reportan aparte.
+
+## 7. Cómo ejecutarlo
 
 Requiere Python 3.12 y SQL Server 2022 Express en la instancia `SQLEXPRESS`.
 
@@ -157,6 +225,7 @@ cp .env.example .env          # ajustar credenciales si hace falta
 
 bash scripts/download_data.sh              # baja los 14 archivos (~1.6 GB)
 bash scripts/download_data.sh 2021_01_06   # o solo un periodo
+bash scripts/download_poblacion.sh        # RIDA 2025 + catalogo UBIGEO (~138 MB)
 
 python -m src.pipeline                     # ETL completo (~35 min)
 python -m src.pipeline --solo-parquet      # sin tocar SQL Server
@@ -166,31 +235,34 @@ python scripts/regenerar_resumen.py        # rehace el Parquet de la demo
 
 streamlit run dashboards/app.py            # dashboard en http://localhost:8501
 
-python -m pytest tests/ -q                 # 19 pruebas
+python -m pytest tests/ -q                 # 26 pruebas
 ```
 
-La descarga se hace contra el catálogo CKAN, no con URLs escritas a mano,
+Las descargas se hacen contra el catálogo CKAN, no con URLs escritas a mano,
 porque el patrón de los nombres cambió en 2024: hasta 2023 terminan en `_0.zip`,
-desde 2024 no. El script pide `User-Agent` de navegador porque el WAF del
-portal devuelve HTTP 418 a clientes sin identificar.
+desde 2024 no. Ambas piden `User-Agent` de navegador porque el WAF del portal
+devuelve HTTP 418 a clientes sin identificar. `download_poblacion.sh` resuelve
+sus URLs desde el índice del catálogo y saltea lo que ya está en `data/raw/`.
 
-## 7. Estructura
+## 8. Estructura
 
 ```
 scripts/download_data.sh      descarga desde el catálogo CKAN
+scripts/download_poblacion.sh descarga RIDA 2025 y catálogo UBIGEO
 scripts/regenerar_resumen.py  rehace el Parquet sin reprocesar 1.6 GB
 src/config.py                 rutas, catálogo de columnas, mapeo canónico
 src/extract.py                lectura en lotes desde el ZIP
-src/transform.py              limpieza, tipado, agregado, dimensiones
+src/transform.py              limpieza, tipado, UBIGEO, agregado, dimensiones
+src/poblacion.py              ingesta RIDA, auditoría de cobertura, agregado regional
 src/load.py                   modelo estrella en SQL Server + Parquet
 src/pipeline.py               orquestador
 dashboards/app.py             dashboard Streamlit sobre Parquet
 sql/schema.sql                DDL del modelo estrella
-tests/                        19 pruebas sobre fixture con datos sucios
+tests/                        26 pruebas sobre fixtures con datos sucios
 data/reports/calidad.json     informe de calidad de cada corrida
 ```
 
-## 8. Alcance y límites
+## 9. Alcance y límites
 
 Este es un proyecto individual de portafolio. Lo que **no** tiene, y conviene
 decir de entrada:
@@ -204,12 +276,13 @@ decir de entrada:
 - **No hay incrementalidad.** Cada corrida reprocesa los 14 archivos completos
   en unos 35 minutos. Con 9 años que es aceptable; con 50 años, no.
 - **No hay orquestación ni reintentos.** Se ejecuta a mano y falla ruidosamente.
-- **Sin tests de integración contra SQL Server.** Las 19 pruebas cubren la
-  transformación, que es donde está la lógica; la capa de persistencia se
-  valida a mano.
-- **El análisis no corrige por población.** Un 82 % de atenciones en primer nivel
-  en un distrito con mucha más población que otro no significa mejor cobertura.
-  Falta unir con población del INEI para comparar tasas y no solo conteos.
+- **Sin tests de integración contra SQL Server.** Las 26 pruebas cubren la
+  transformación y el cruce con población, que es donde está la lógica; la capa de
+  persistencia se valida a mano.
+- **Las tasas solo existen para 2025.** El denominador disponible es población
+  identificada con DNI de un solo año. Comparar por población entre 2017 y 2025
+  exigiría una serie yearly que este proyecto no trae. Es el límite más visible
+  del análisis y está preferido en el dashboard, no escondido.
 - **Sin vista por prestación.** Se descartó la columna de servicio CIE para
   mantener el pipeline rápido. Es la extensión más natural.
 
